@@ -9,6 +9,7 @@ const PAGE_DELAY_MS = 1500;
 
 export interface ParseResult {
   position: number | null;
+  topPosition: number | null;
   totalScanned: number;
   pagesScanned: number;
 }
@@ -41,6 +42,8 @@ export async function parseOlxPosition(
 
   let organicCount = 0;
   let foundPosition: number | null = null;
+  let topCount = 0;
+  let foundTopPosition: number | null = null;
   let pagesScanned = 0;
 
   try {
@@ -84,10 +87,8 @@ export async function parseOlxPosition(
           )
         ) as HTMLAnchorElement[];
 
-        // Track only organic listings — promoted ones are NOT added to `seen`,
-        // so a listing that appears as both TOP and organic is counted at its
-        // organic position (the TOP occurrence is simply skipped).
         const seen = new Set<string>();
+        const seenTop = new Set<string>();
         const results: Array<{ id: string; isPromoted: boolean }> = [];
 
         for (const link of allLinks) {
@@ -103,13 +104,15 @@ export async function parseOlxPosition(
             href.includes('search_reason=search|promoted');
 
           if (isPromoted) {
-            results.push({ id, isPromoted: true });
+            if (!seenTop.has(id)) {
+              seenTop.add(id);
+              results.push({ id, isPromoted: true });
+            }
             continue; // do NOT add to seen — organic occurrence must still be counted
           }
 
-          if (seen.has(id)) continue; // deduplicate: image-link and title-link share same ID
+          if (seen.has(id)) continue;
           seen.add(id);
-
           results.push({ id, isPromoted: false });
         }
 
@@ -117,11 +120,15 @@ export async function parseOlxPosition(
       });
 
       for (const listing of listings) {
-        if (!listing.isPromoted) {
+        if (listing.isPromoted) {
+          topCount++;
+          if (listing.id === targetId && foundTopPosition === null) {
+            foundTopPosition = topCount;
+          }
+        } else {
           organicCount++;
-          if (listing.id === targetId) {
+          if (listing.id === targetId && foundPosition === null) {
             foundPosition = organicCount;
-            break;
           }
         }
       }
@@ -143,5 +150,5 @@ export async function parseOlxPosition(
     await browser.close();
   }
 
-  return { position: foundPosition, totalScanned: organicCount, pagesScanned };
+  return { position: foundPosition, topPosition: foundTopPosition, totalScanned: organicCount, pagesScanned };
 }
