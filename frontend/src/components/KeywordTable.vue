@@ -10,7 +10,7 @@
         Зупинити
       </button>
       <span v-if="isProcessing" class="queue-status">
-        В черзі: {{ queueIds.length }}
+        В черзі: {{ queuedIds.length }}
       </span>
     </div>
 
@@ -22,6 +22,7 @@
             <th class="col-num">#</th>
             <th class="col-kw">Ключове слово</th>
             <th class="col-pos">Позиція</th>
+            <th class="col-top">ТОП</th>
             <th class="col-pages">Сторінок</th>
             <th class="col-date">Оновлено</th>
             <th class="col-status">Статус</th>
@@ -42,6 +43,13 @@
               <span v-else-if="kw.status === 'error'" class="pos-badge pos-error" :title="kw.error ?? ''">
                 помилка
               </span>
+              <span v-else class="muted">—</span>
+            </td>
+            <td class="col-top">
+              <span v-if="kw.status === 'done' && kw.topPosition !== null" class="pos-badge pos-top">
+                #{{ kw.topPosition }}
+              </span>
+              <span v-else-if="kw.status === 'done'" class="muted">—</span>
               <span v-else class="muted">—</span>
             </td>
             <td class="col-pages muted">
@@ -74,7 +82,7 @@
           <!-- Add new row -->
           <tr class="row-add">
             <td class="col-num muted">{{ keywords.length + 1 }}</td>
-            <td class="col-kw" colspan="5">
+            <td class="col-kw" colspan="6">
               <input
                 v-model="newKeyword"
                 class="add-input"
@@ -104,7 +112,7 @@ import type { SavedKeyword, KeywordStatus } from '../types';
 defineProps<{
   keywords: SavedKeyword[];
   isProcessing: boolean;
-  queueIds: string[];
+  queuedIds: string[];
 }>();
 
 const emit = defineEmits<{

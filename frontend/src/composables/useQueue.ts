@@ -1,62 +1,82 @@
 import { ref, type Ref } from 'vue';
-import type { SavedKeyword, AppConfig } from '../types';
+import type { Listing, SavedKeyword } from '../types';
 import { checkPosition } from '../api/checkPosition';
 
-// Delay between sequential requests to avoid OLX rate-limiting
 const DELAY_MS = 10000;
 
-export function useQueue(
-  keywords: Ref<SavedKeyword[]>,
-  config: Ref<AppConfig>
-) {
-  const isProcessing = ref(false);
-  const queueIds = ref<string[]>([]);
+interface QueueItem {
+  listingId: string;
+  keywordId: string;
+}
 
-  function getKw(id: string): SavedKeyword | undefined {
-    return keywords.value.find((k) => k.id === id);
+export function useQueue(listings: Ref<Listing[]>) {
+  const isProcessing = ref(false);
+  const queue = ref<QueueItem[]>([]);
+
+  function getListing(listingId: string): Listing | undefined {
+    return listings.value.find((l) => l.id === listingId);
   }
 
-  function enqueue(id: string) {
-    const kw = getKw(id);
+  function getKeyword(listingId: string, keywordId: string): SavedKeyword | undefined {
+    return getListing(listingId)?.keywords.find((k) => k.id === keywordId);
+  }
+
+  function isInQueue(listingId: string, keywordId: string): boolean {
+    return queue.value.some((i) => i.listingId === listingId && i.keywordId === keywordId);
+  }
+
+  function enqueue(listingId: string, keywordId: string) {
+    const kw = getKeyword(listingId, keywordId);
     if (!kw) return;
     if (kw.status === 'queued' || kw.status === 'running') return;
-    if (queueIds.value.includes(id)) return;
+    if (isInQueue(listingId, keywordId)) return;
     kw.status = 'queued';
     kw.error = null;
-    queueIds.value.push(id);
+    queue.value.push({ listingId, keywordId });
     if (!isProcessing.value) processNext();
   }
 
-  function enqueueAll() {
-    for (const kw of keywords.value) {
+  function enqueueAllForListing(listingId: string) {
+    const listing = getListing(listingId);
+    if (!listing) return;
+    for (const kw of listing.keywords) {
       if (kw.status === 'queued' || kw.status === 'running') continue;
-      if (queueIds.value.includes(kw.id)) continue;
+      if (isInQueue(listingId, kw.id)) continue;
       kw.status = 'queued';
       kw.error = null;
-      queueIds.value.push(kw.id);
+      queue.value.push({ listingId, keywordId: kw.id });
     }
     if (!isProcessing.value) processNext();
   }
 
-  function cancelQueue() {
-    // Mark queued (not running) items back to idle
-    for (const id of queueIds.value) {
-      const kw = getKw(id);
+  function cancelForListing(listingId: string) {
+    // Remove queued (not running) items for this listing
+    queue.value = queue.value.filter((item) => {
+      if (item.listingId !== listingId) return true;
+      const kw = getKeyword(item.listingId, item.keywordId);
       if (kw && kw.status === 'queued') kw.status = 'idle';
-    }
-    queueIds.value = queueIds.value.filter((id) => getKw(id)?.status === 'running');
+      return kw?.status === 'running'; // keep running item in queue until it finishes
+    });
+  }
+
+  /** IDs of keywords in queue (or running) for a specific listing */
+  function queuedIdsForListing(listingId: string): string[] {
+    return queue.value
+      .filter((i) => i.listingId === listingId)
+      .map((i) => i.keywordId);
   }
 
   async function processNext() {
-    if (isProcessing.value || queueIds.value.length === 0) return;
+    if (isProcessing.value) return;
     isProcessing.value = true;
 
-    while (queueIds.value.length > 0) {
-      const id = queueIds.value[0];
-      const kw = getKw(id);
+    while (queue.value.length > 0) {
+      const item = queue.value[0];
+      const listing = getListing(item.listingId);
+      const kw = getKeyword(item.listingId, item.keywordId);
 
-      if (!kw) {
-        queueIds.value.shift();
+      if (!listing || !kw) {
+        queue.value.shift();
         continue;
       }
 
@@ -65,11 +85,11 @@ export function useQueue(
       try {
         const result = await checkPosition({
           keyword: kw.keyword,
-          listingUrl: config.value.listingUrl,
-          citySlug: config.value.citySlug,
+          listingUrl: listing.url,
+          citySlug: listing.citySlug,
         });
-
         kw.position = result.position;
+        kw.topPosition = result.topPosition;
         kw.totalScanned = result.totalScanned;
         kw.pagesScanned = result.pagesScanned;
         kw.lastChecked = new Date().toISOString();
@@ -86,10 +106,9 @@ export function useQueue(
         }
       }
 
-      queueIds.value.shift();
+      queue.value.shift();
 
-      // Pause between requests only if more items are waiting
-      if (queueIds.value.length > 0) {
+      if (queue.value.length > 0) {
         await new Promise((r) => setTimeout(r, DELAY_MS));
       }
     }
@@ -97,5 +116,5 @@ export function useQueue(
     isProcessing.value = false;
   }
 
-  return { isProcessing, queueIds, enqueue, enqueueAll, cancelQueue };
+  return { isProcessing, queue, enqueue, enqueueAllForListing, cancelForListing, queuedIdsForListing };
 }

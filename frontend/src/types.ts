@@ -6,6 +6,7 @@ export interface CheckPositionRequest {
 
 export interface CheckPositionResponse {
   position: number | null;
+  topPosition: number | null;
   totalScanned: number;
   pagesScanned: number;
   error?: string;
@@ -22,6 +23,7 @@ export interface SavedKeyword {
   id: string;
   keyword: string;
   position: number | null;
+  topPosition: number | null;
   totalScanned: number;
   pagesScanned: number;
   lastChecked: string | null;
@@ -29,6 +31,14 @@ export interface SavedKeyword {
   error: string | null;
 }
 
+export interface Listing {
+  id: string;
+  url: string;
+  citySlug: string;
+  keywords: SavedKeyword[];
+}
+
+/** @deprecated — kept only for migration from old localStorage format */
 export interface AppConfig {
   listingUrl: string;
   citySlug: string;
