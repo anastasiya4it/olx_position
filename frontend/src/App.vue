@@ -8,20 +8,28 @@
     <main class="app-main">
 
       <!-- One card per listing -->
-      <ListingCard
-        v-for="listing in listings"
+      <div
+        v-for="(listing, idx) in listings"
         :key="listing.id"
-        :listing="listing"
-        :is-processing="isProcessing"
-        :queued-ids="queuedIdsForListing(listing.id)"
-        @remove="removeListing(listing.id)"
-        @update="updateListing(listing.id, $event)"
-        @add-keyword="handleAddKeyword(listing.id, $event)"
-        @remove-keyword="removeKeyword(listing.id, $event)"
-        @recheck="enqueue(listing.id, $event)"
-        @check-all="enqueueAllForListing(listing.id)"
-        @cancel="cancelForListing(listing.id)"
-      />
+      >
+        <ListingCard
+          :listing="listing"
+          :is-processing="isProcessing"
+          :queued-ids="queuedIdsForListing(listing.id)"
+          :base-keywords="baseKeywords"
+          @remove="removeListing(listing.id)"
+          @update="updateListing(listing.id, $event)"
+          @add-keyword="handleAddKeyword(listing.id, $event)"
+          @remove-keyword="removeKeyword(listing.id, $event)"
+          @recheck="enqueue(listing.id, $event)"
+          @pin="handlePin"
+          @check-all="enqueueAllForListing(listing.id)"
+          @cancel="cancelForListing(listing.id)"
+          @reorder="reorderKeyword(listing.id, $event.from, $event.to)"
+          @move-up="moveListing(idx, -1)"
+          @move-down="moveListing(idx, 1)"
+        />
+      </div>
 
       <!-- Add listing form -->
       <div class="add-listing-card">
@@ -54,22 +62,40 @@ import { CITIES, DEFAULT_CITY } from './constants/cities';
 import { useStorage } from './composables/useStorage';
 import { useQueue } from './composables/useQueue';
 
-const { listings, addListing, removeListing, updateListing, addKeyword, removeKeyword } = useStorage();
+const { listings, baseKeywords, addListing, removeListing, updateListing, addKeyword, removeKeyword, reorderKeyword, reorderListing, toggleBaseKeyword } = useStorage();
 const { isProcessing, enqueue, enqueueAllForListing, cancelForListing, queuedIdsForListing } = useQueue(listings);
 
 const newUrl  = ref('');
 const newCity = ref(DEFAULT_CITY.slug);
 
+function moveListing(idx: number, dir: -1 | 1) {
+  const target = idx + dir;
+  if (target < 0 || target >= listings.value.length) return;
+  reorderListing(idx, target);
+}
+
 function handleAddListing() {
   const url = newUrl.value.trim();
   if (!url) return;
-  addListing(url, newCity.value);
+  const listing = addListing(url, newCity.value);
+  for (const kw of listing.keywords) {
+    enqueue(listing.id, kw.id);
+  }
   newUrl.value  = '';
   newCity.value = DEFAULT_CITY.slug;
+}
+
+function handlePin(keyword: string) {
+  const added = toggleBaseKeyword(keyword);
+  for (const { listingId, kwId } of added) {
+    enqueue(listingId, kwId);
+  }
 }
 
 function handleAddKeyword(listingId: string, keyword: string) {
   const kw = addKeyword(listingId, keyword);
   enqueue(listingId, kw.id);
 }
+
+
 </script>

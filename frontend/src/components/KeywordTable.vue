@@ -19,19 +19,29 @@
       <table class="kw-table">
         <thead>
           <tr>
-            <th class="col-num">#</th>
+            <th class="col-drag"></th>
             <th class="col-kw">Ключове слово</th>
             <th class="col-pos">Позиція</th>
             <th class="col-top">ТОП</th>
-            <th class="col-pages">Сторінок</th>
+            <th class="col-pages">Оголошень</th>
             <th class="col-date">Оновлено</th>
             <th class="col-status">Статус</th>
             <th class="col-actions"></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(kw, idx) in keywords" :key="kw.id" :class="`row-${kw.status}`">
-            <td class="col-num muted">{{ idx + 1 }}</td>
+          <tr
+            v-for="(kw, idx) in keywords"
+            :key="kw.id"
+            draggable="true"
+            :class="['row-' + kw.status, { 'row-dragging': dragIdx === idx, 'row-drag-over': dragOver === idx }]"
+            @dragstart="onDragStart(idx, $event)"
+            @dragover.prevent="dragOver = idx"
+            @dragleave="dragOver = null"
+            @drop="onDrop(idx)"
+            @dragend="dragIdx = null; dragOver = null"
+          >
+            <td class="col-drag">⠿</td>
             <td class="col-kw">{{ kw.keyword }}</td>
             <td class="col-pos">
               <span v-if="kw.status === 'done' && kw.position !== null" class="pos-badge pos-found">
@@ -53,7 +63,7 @@
               <span v-else class="muted">—</span>
             </td>
             <td class="col-pages muted">
-              {{ kw.pagesScanned > 0 ? kw.pagesScanned : '—' }}
+              {{ kw.totalListings !== null ? kw.totalListings : '—' }}
             </td>
             <td class="col-date muted">
               {{ formatDate(kw.lastChecked) }}
@@ -64,6 +74,11 @@
               </span>
             </td>
             <td class="col-actions">
+              <button
+                :class="['btn-icon', 'btn-icon--pin', { 'btn-icon--pinned': baseKeywords.includes(kw.keyword) }]"
+                :title="baseKeywords.includes(kw.keyword) ? 'Видалити з базових ключів' : 'Додати до базових ключів'"
+                @click="$emit('pin', kw.keyword)"
+              >★</button>
               <button
                 class="btn-icon"
                 title="Перевірити ще раз"
@@ -81,7 +96,7 @@
 
           <!-- Add new row -->
           <tr class="row-add">
-            <td class="col-num muted">{{ keywords.length + 1 }}</td>
+            <td class="col-drag"></td>
             <td class="col-kw" colspan="6">
               <input
                 v-model="newKeyword"
@@ -113,23 +128,40 @@ defineProps<{
   keywords: SavedKeyword[];
   isProcessing: boolean;
   queuedIds: string[];
+  baseKeywords: string[];
 }>();
 
 const emit = defineEmits<{
   add: [keyword: string];
   remove: [id: string];
   recheck: [id: string];
+  pin: [keyword: string];
   checkAll: [];
   cancel: [];
+  reorder: [payload: { from: number; to: number }];
 }>();
 
 const newKeyword = ref('');
+const dragIdx    = ref<number | null>(null);
+const dragOver   = ref<number | null>(null);
 
 function submitNew() {
   const kw = newKeyword.value.trim();
   if (!kw) return;
   emit('add', kw);
   newKeyword.value = '';
+}
+
+function onDragStart(idx: number, e: DragEvent) {
+  e.stopPropagation();
+  dragIdx.value = idx;
+  e.dataTransfer!.effectAllowed = 'move';
+}
+
+function onDrop(idx: number) {
+  if (dragIdx.value !== null && dragIdx.value !== idx)
+    emit('reorder', { from: dragIdx.value, to: idx });
+  dragOver.value = null;
 }
 
 const STATUS_LABELS: Record<KeywordStatus, string> = {

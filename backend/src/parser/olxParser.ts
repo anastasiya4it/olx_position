@@ -11,7 +11,7 @@ export interface ParseResult {
   position: number | null;
   topPosition: number | null;
   totalScanned: number;
-  pagesScanned: number;
+  totalListings: number | null;
 }
 
 function buildSearchUrl(keyword: string, citySlug: string, page: number): string {
@@ -44,7 +44,7 @@ export async function parseOlxPosition(
   let foundPosition: number | null = null;
   let topCount = 0;
   let foundTopPosition: number | null = null;
-  let pagesScanned = 0;
+  let totalListings: number | null = null;
 
   try {
     const page = await browser.newPage();
@@ -73,9 +73,16 @@ export async function parseOlxPosition(
           { timeout: 15000 }
         );
       } catch {
-        // No listings on this page — stop scanning
-        pagesScanned = pageNum;
         break;
+      }
+
+      // Extract total count from "Ми знайшли N оголошень" on the first page
+      if (pageNum === 1) {
+        totalListings = await page.evaluate(() => {
+          const text = document.body.innerText || '';
+          const m = text.match(/Ми знайшли[\s ]+(\d[\d\s ]*)\s*оголошень/);
+          return m ? parseInt(m[1].replace(/[\s ]/g, ''), 10) : null;
+        });
       }
 
       const listings = await page.evaluate(() => {
@@ -133,8 +140,6 @@ export async function parseOlxPosition(
         }
       }
 
-      pagesScanned = pageNum;
-
       if (foundPosition !== null) break;
 
       const hasNextPage = await page.$(
@@ -150,5 +155,5 @@ export async function parseOlxPosition(
     await browser.close();
   }
 
-  return { position: foundPosition, topPosition: foundTopPosition, totalScanned: organicCount, pagesScanned };
+  return { position: foundPosition, topPosition: foundTopPosition, totalScanned: organicCount, totalListings };
 }

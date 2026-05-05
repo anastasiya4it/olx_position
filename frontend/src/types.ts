@@ -8,7 +8,7 @@ export interface CheckPositionResponse {
   position: number | null;
   topPosition: number | null;
   totalScanned: number;
-  pagesScanned: number;
+  totalListings: number | null;
   error?: string;
 }
 
@@ -25,7 +25,7 @@ export interface SavedKeyword {
   position: number | null;
   topPosition: number | null;
   totalScanned: number;
-  pagesScanned: number;
+  totalListings: number | null;
   lastChecked: string | null;
   status: KeywordStatus;
   error: string | null;

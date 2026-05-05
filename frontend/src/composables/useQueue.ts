@@ -91,7 +91,7 @@ export function useQueue(listings: Ref<Listing[]>) {
         kw.position = result.position;
         kw.topPosition = result.topPosition;
         kw.totalScanned = result.totalScanned;
-        kw.pagesScanned = result.pagesScanned;
+        kw.totalListings = result.totalListings;
         kw.lastChecked = new Date().toISOString();
         kw.status = 'done';
         kw.error = result.error ?? null;

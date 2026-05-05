@@ -1,7 +1,8 @@
 import { ref, watch } from 'vue';
 import type { Listing, SavedKeyword } from '../types';
 
-const LISTINGS_KEY = 'olx_tracker_listings';
+const LISTINGS_KEY  = 'olx_tracker_listings';
+const BASE_KWS_KEY  = 'olx_tracker_base_keywords';
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -53,7 +54,7 @@ function makeKeyword(keyword: string): SavedKeyword {
     position: null,
     topPosition: null,
     totalScanned: 0,
-    pagesScanned: 0,
+    totalListings: null,
     lastChecked: null,
     status: 'idle',
     error: null,
@@ -61,19 +62,41 @@ function makeKeyword(keyword: string): SavedKeyword {
 }
 
 export function useStorage() {
-  const listings = ref<Listing[]>(loadListings());
+  const listings     = ref<Listing[]>(loadListings());
+  const baseKeywords = ref<string[]>(load<string[]>(BASE_KWS_KEY, []));
 
-  watch(listings, (v) => localStorage.setItem(LISTINGS_KEY, JSON.stringify(v)), { deep: true });
+  watch(listings,     (v) => localStorage.setItem(LISTINGS_KEY, JSON.stringify(v)), { deep: true });
+  watch(baseKeywords, (v) => localStorage.setItem(BASE_KWS_KEY, JSON.stringify(v)));
 
   function addListing(url: string, citySlug: string): Listing {
     const entry: Listing = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       url: url.trim(),
       citySlug,
-      keywords: [],
+      keywords: baseKeywords.value.map(makeKeyword),
     };
     listings.value.push(entry);
     return entry;
+  }
+
+  /** Pin/unpin a keyword as a base keyword.
+   *  Returns newly added {listingId, kwId} pairs so callers can enqueue them. */
+  function toggleBaseKeyword(keyword: string): Array<{ listingId: string; kwId: string }> {
+    const idx = baseKeywords.value.indexOf(keyword);
+    if (idx !== -1) {
+      baseKeywords.value.splice(idx, 1);
+      return [];
+    }
+    baseKeywords.value.push(keyword);
+    const added: Array<{ listingId: string; kwId: string }> = [];
+    for (const listing of listings.value) {
+      if (!listing.keywords.some((k) => k.keyword === keyword)) {
+        const kw = makeKeyword(keyword);
+        listing.keywords.push(kw);
+        added.push({ listingId: listing.id, kwId: kw.id });
+      }
+    }
+    return added;
   }
 
   function removeListing(listingId: string) {
@@ -101,5 +124,18 @@ export function useStorage() {
     l.keywords = l.keywords.filter((k) => k.id !== keywordId);
   }
 
-  return { listings, addListing, removeListing, updateListing, addKeyword, removeKeyword };
+  function reorderKeyword(listingId: string, fromIdx: number, toIdx: number) {
+    const l = listings.value.find((l) => l.id === listingId);
+    if (!l || fromIdx === toIdx) return;
+    const [moved] = l.keywords.splice(fromIdx, 1);
+    l.keywords.splice(toIdx, 0, moved);
+  }
+
+  function reorderListing(fromIdx: number, toIdx: number) {
+    if (fromIdx === toIdx) return;
+    const [moved] = listings.value.splice(fromIdx, 1);
+    listings.value.splice(toIdx, 0, moved);
+  }
+
+  return { listings, baseKeywords, addListing, removeListing, updateListing, addKeyword, removeKeyword, reorderKeyword, reorderListing, toggleBaseKeyword };
 }
